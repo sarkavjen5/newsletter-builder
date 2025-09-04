@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Thriving Maker Newsletter Builder</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/umd/lucide.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        }
+        .newsletter-app {
+            max-width: 428px;
+            margin: 0 auto;
+            background: white;
+            min-height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <div id="app"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        const { Plus, Edit3, Trash2, Copy, RefreshCw, Calendar, BookOpen } = lucide;
+
+        const NewsletterBuilder = () => {
+            const [weeks, setWeeks] = useState({});
+            const [currentWeek, setCurrentWeek] = useState('');
+            const [currentSection, setCurrentSection] = useState('activities');
+            const [inputText, setInputText] = useState('');
+            const [editingId, setEditingId] = useState(null);
+            const [showNewsletter, setShowNewsletter] = useState(false);
+            const [copySuccess, setCopySuccess] = useState(false);
+
+            // Get current week string (e.g., "2025-W35")
+            const getCurrentWeek = () => {
+                const now = new Date();
+                const start = new Date(now.getFullYear(), 0, 1);
+                const weekNum = Math.ceil(((now - start) / 86400000 + start.getDay() + 1) / 7);
+                return `${now.getFullYear()}-W${weekNum.toString().padStart(2, '0')}`;
+            };
+
+            // Initialize current week and load data
+            useEffect(() => {
+                const week = getCurrentWeek();
+                setCurrentWeek(week);
+                
+                // Load saved data
+                const saved = localStorage.getItem('newsletter-weeks');
+                if (saved) {
+                    try {
+                        setWeeks(JSON.parse(saved));
+                    } catch (e) {
+                        console.error('Error loading saved weeks');
+                    }
+                }
+            }, []);
+
+            // Save data whenever weeks change
+            useEffect(() => {
+                if (Object.keys(weeks).length > 0) {
+                    localStorage.setItem('newsletter-weeks', JSON.stringify(weeks));
+                }
+            }, [weeks]);
+
+            const sections = {
+                activities: { title: "What I've Been Up To", icon: "🚀" },
+                learnings: { title: "What I Learned", icon: "💡" },
+                tips: { title: "Productivity/Website Tip", icon: "⚡" },
+                offers: { title: "Current Offers", icon: "🎯" }
+            };
+
+            // Get current week's entries
+            const getCurrentWeekEntries = () => {
+                if (!weeks[currentWeek]) {
+                    return {
+                        activities: [],
+                        learnings: [],
+                        tips: [],
+                        offers: []
+                    };
+                }
+                return weeks[currentWeek];
+            };
+
+            // Get formatted week display
+            const getWeekDisplay = (weekStr) => {
+                const [year, week] = weekStr.split('-W');
+                const date = new Date(year, 0, 1 + (week - 1) * 7);
+                const endDate = new Date(date);
+                endDate.setDate(date.getDate() + 6);
+                
+                return `Week ${week} (${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})`;
+            };
+
+            const addEntry = () => {
+                if (!inputText.trim()) return;
+                
+                const newEntry = {
+                    id: Date.now(),
+                    text: inputText.trim(),
+                    timestamp: new Date().toLocaleDateString()
+                };
+
+                const currentEntries = getCurrentWeekEntries();
+
+                if (editingId) {
+                    const updatedEntries = {
+                        ...currentEntries,
+                        [currentSection]: currentEntries[currentSection].map(entry =>
+                            entry.id === editingId ? { ...entry, text: inputText.trim() } : entry
+                        )
+                    };
+                    
+                    setWeeks(prev => ({
+                        ...prev,
+                        [currentWeek]: updatedEntries
+                    }));
+                    setEditingId(null);
+                } else {
+                    const updatedEntries = {
+                        ...currentEntries,
+                        [currentSection]: [...currentEntries[currentSection], newEntry]
+                    };
+                    
+                    setWeeks(prev => ({
+                        ...prev,
+                        [currentWeek]: updatedEntries
+                    }));
+                }
+                
+                setInputText('');
+                
+                // Auto-scroll to bottom on mobile after adding
+                setTimeout(() => {
+                    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                }, 100);
+            };
+
+            const editEntry = (id, text) => {
+                setEditingId(id);
+                setInputText(text);
+                // Scroll to input
+                const textarea = document.querySelector('textarea');
+                if (textarea) textarea.focus();
+            };
+
+            const deleteEntry = (id) => {
+                const currentEntries = getCurrentWeekEntries();
+                const updatedEntries = {
+                    ...currentEntries,
+                    [currentSection]: currentEntries[currentSection].filter(entry => entry.id !== id)
+                };
+                
+                setWeeks(prev => ({
+                    ...prev,
+                    [currentWeek]: updatedEntries
+                }));
+            };
+
+            const generateNewsletter = () => {
+                const entries = getCurrentWeekEntries();
+                let newsletter = `# Thriving Maker Newsletter\n## ${getWeekDisplay(currentWeek)}\n\n`;
+                
+                Object.entries(sections).forEach(([key, section]) => {
+                    newsletter += `## ${section.title} ${section.icon}\n\n`;
+                    
+                    if (entries[key].length === 0) {
+                        newsletter += "*No entries yet for this section.*\n\n";
+                    } else {
+                        entries[key].forEach((entry, index) => {
+                            newsletter += `• ${entry.text}\n`;
+                        });
+                        newsletter += "\n";
+                    }
+                });
+
+                newsletter += `---\n*Generated on ${new Date().toLocaleDateString()}*`;
+                
+                return newsletter;
+            };
+
+            const copyToClipboard = async () => {
+                const content = generateNewsletter();
+                try {
+                    await navigator.clipboard.writeText(content);
+                    setCopySuccess(true);
+                    setTimeout(() => setCopySuccess(false), 2000);
+                } catch (err) {
+                    // Fallback for older browsers
+                    const textArea = document.createElement('textarea');
+                    textArea.value = content;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    setCopySuccess(true);
+                    setTimeout(() => setCopySuccess(false), 2000);
+                }
+            };
+
+            const clearCurrentWeek = () => {
+                if (window.confirm(`Clear all entries for ${getWeekDisplay(currentWeek)}?`)) {
+                    setWeeks(prev => {
+                        const updated = { ...prev };
+                        delete updated[currentWeek];
+                        return updated;
+                    });
+                }
+            };
+
+            const createNewWeek = () => {
+                const newWeekNum = prompt("Enter week number (e.g., 36):");
+                if (newWeekNum && !isNaN(newWeekNum)) {
+                    const year = new Date().getFullYear();
+                    const newWeek = `${year}-W${newWeekNum.padStart(2, '0')}`;
+                    setCurrentWeek(newWeek);
+                    setShowNewsletter(false);
+                }
+            };
+
+            const switchWeek = (weekStr) => {
+                setCurrentWeek(weekStr);
+                setEditingId(null);
+                setInputText('');
+                setShowNewsletter(false);
+            };
+
+            if (showNewsletter) {
+                return React.createElement('div', { className: "newsletter-app" },
+                    // Newsletter Header
+                    React.createElement('div', { 
+                        className: "bg-gradient-to-r from-green-600 to-blue-600 text-white p-4 sticky top-0 z-10" 
+                    },
+                        React.createElement('div', { className: "flex items-center justify-between" },
+                            React.createElement('button', {
+                                onClick: () => setShowNewsletter(false),
+                                className: "text-white hover:text-gray-200"
+                            }, "← Back"),
+                            React.createElement('h1', { className: "text-lg font-bold" }, "Newsletter Preview"),
+                            React.createElement(BookOpen, { size: 24 })
+                        )
+                    ),
+
+                    // Newsletter Content
+                    React.createElement('div', { className: "p-4" },
+                        React.createElement('div', { 
+                            className: "bg-gray-50 p-4 rounded-lg mb-4 font-mono text-sm whitespace-pre-wrap" 
+                        }, generateNewsletter()),
+                        
+                        // Copy Button
+                        React.createElement('button', {
+                            onClick: copyToClipboard,
+                            className: `w-full py-3 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors ${
+                                copySuccess 
+                                    ? 'bg-green-500 text-white' 
+                                    : 'bg-blue-500 text-white hover:bg-blue-600'
+                            }`
+                        },
+                            React.createElement(Copy, { size: 20 }),
+                            copySuccess ? 'Copied!' : 'Copy Newsletter'
+                        ),
+                        
+                        React.createElement('p', { 
+                            className: "text-sm text-gray-600 text-center mt-2" 
+                        }, "Newsletter copied to clipboard! Paste it anywhere you need it.")
+                    )
+                );
+            }
+
+            return React.createElement('div', { className: "newsletter-app" },
+                // Header
+                React.createElement('div', { 
+                    className: "bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4 sticky top-0 z-10" 
+                },
+                    React.createElement('h1', { className: "text-xl font-bold text-center" }, "Newsletter Builder"),
+                    React.createElement('p', { className: "text-purple-100 text-sm text-center mt-1" },
+                        currentWeek ? getWeekDisplay(currentWeek) : 'Loading...'
+                    )
+                ),
+
+                // Week Navigation
+                React.createElement('div', { 
+                    className: "bg-white border-b px-4 py-3 sticky top-16 z-10" 
+                },
+                    React.createElement('div', { className: "flex items-center justify-between mb-3" },
+                        React.createElement('div', { className: "flex items-center gap-2" },
+                            React.createElement(Calendar, { size: 18, className: "text-gray-600" }),
+                            React.createElement('span', { className: "font-medium text-gray-700" }, "Weeks")
+                        ),
+                        React.createElement('button', {
+                            onClick: createNewWeek,
+                            className: "bg-blue-500 text-white px-3 py-1 rounded text-sm font-medium"
+                        }, "+ New")
+                    ),
+                    
+                    React.createElement('div', { className: "flex overflow-x-auto gap-2 pb-1" },
+                        // Current week always first
+                        React.createElement('button', {
+                            onClick: () => switchWeek(getCurrentWeek()),
+                            className: `flex-shrink-0 px-3 py-2 rounded-lg text-sm font-medium ${
+                                currentWeek === getCurrentWeek()
+                                    ? 'bg-blue-500 text-white'
+                                    : 'bg-gray-100 text-gray-600'
+                            }`
+                        }, "This Week"),
+                        
+                        // Other weeks
+                        ...Object.keys(weeks)
+                            .filter(w => w !== getCurrentWeek())
+                            .sort()
+                            .reverse()
+                            .slice(0, 4)
+                            .map(weekStr =>
+                                React.createElement('button', {
+                                    key: weekStr,
+                                    onClick: () => switchWeek(weekStr),
+                                    className: `flex-shrink-0 px-3 py-2 rounded-lg text-sm font-medium ${
+                                        currentWeek === weekStr
+                                            ? 'bg-blue-500 text-white'
+                                            : 'bg-gray-100 text-gray-600'
+                                    }`
+                                }, `W${weekStr.split('-W')[1]}`)
+                            )
+                    )
+                ),
+
+                // Section Tabs
+                React.createElement('div', { 
+                    className: "flex overflow-x-auto bg-gray-50 px-2 py-3 sticky top-32 z-10" 
+                },
+                    ...Object.entries(sections).map(([key, section]) =>
+                        React.createElement('button', {
+                            key: key,
+                            onClick: () => setCurrentSection(key),
+                            className: `flex-shrink-0 px-3 py-2 mx-1 rounded-lg text-xs font-medium transition-colors ${
+                                currentSection === key
+                                    ? 'bg-blue-500 text-white'
+                                    : 'bg-white text-gray-600 hover:bg-gray-100'
+                            }`
+                        }, `${section.icon} ${section.title.split(' ').slice(0, 2).join(' ')}`)
+                    )
+                ),
+
+                // Input Section - Fixed at bottom for mobile
+                React.createElement('div', { 
+                    className: "fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4",
+                    style: { maxWidth: '428px', margin: '0 auto' }
+                },
+                    React.createElement('textarea', {
+                        value: inputText,
+                        onChange: (e) => setInputText(e.target.value),
+                        placeholder: `Add to "${sections[currentSection].title}"...`,
+                        className: "w-full p-3 border rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-base",
+                        rows: 2,
+                        style: { fontSize: '16px' } // Prevents zoom on iOS
+                    }),
+                    React.createElement('div', { className: "flex gap-2 mt-2" },
+                        React.createElement('button', {
+                            onClick: addEntry,
+                            disabled: !inputText.trim(),
+                            className: "flex-1 bg-blue-500 text-white py-2 rounded-lg font-medium disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        },
+                            React.createElement(Plus, { size: 18 }),
+                            editingId ? 'Update' : 'Add'
+                        ),
+                        
+                        editingId && React.createElement('button', {
+                            onClick: () => { setEditingId(null); setInputText(''); },
+                            className: "px-4 bg-gray-500 text-white py-2 rounded-lg font-medium"
+                        }, "Cancel"),
+                        
+                        React.createElement('button', {
+                            onClick: () => setShowNewsletter(true),
+                            className: "px-4 bg-green-500 text-white py-2 rounded-lg font-medium flex items-center gap-1"
+                        },
+                            React.createElement(BookOpen, { size: 18 }),
+                            "View"
+                        )
+                    )
+                ),
+
+                // Current Section Entries - Add bottom padding for fixed input
+                React.createElement('div', { className: "p-4 pb-32" },
+                    React.createElement('h2', { 
+                        className: "text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2" 
+                    },
+                        `${sections[currentSection].icon} ${sections[currentSection].title}`,
+                        React.createElement('span', { 
+                            className: "text-sm bg-gray-200 text-gray-600 px-2 py-1 rounded-full" 
+                        }, getCurrentWeekEntries()[currentSection].length)
+                    ),
+                    
+                    getCurrentWeekEntries()[currentSection].length === 0 ? 
+                        React.createElement('div', { className: "text-center text-gray-500 py-8" },
+                            React.createElement('p', { className: "text-lg" }, sections[currentSection].icon),
+                            React.createElement('p', { className: "mt-2" }, "No entries yet!"),
+                            React.createElement('p', { className: "text-sm text-gray-400" }, "Use the input below to add ideas")
+                        ) :
+                        React.createElement('div', { className: "space-y-3" },
+                            ...getCurrentWeekEntries()[currentSection].map((entry) =>
+                                React.createElement('div', { 
+                                    key: entry.id, 
+                                    className: "bg-gray-50 p-4 rounded-lg" 
+                                },
+                                    React.createElement('p', { 
+                                        className: "text-gray-800 leading-relaxed" 
+                                    }, entry.text),
+                                    React.createElement('div', { 
+                                        className: "flex justify-between items-center mt-3 pt-2 border-t border-gray-200" 
+                                    },
+                                        React.createElement('span', { 
+                                            className: "text-xs text-gray-500" 
+                                        }, entry.timestamp),
+                                        React.createElement('div', { className: "flex gap-3" },
+                                            React.createElement('button', {
+                                                onClick: () => editEntry(entry.id, entry.text),
+                                                className: "text-blue-500 hover:text-blue-700 p-1"
+                                            }, React.createElement(Edit3, { size: 16 })),
+                                            React.createElement('button', {
+                                                onClick: () => deleteEntry(entry.id),
+                                                className: "text-red-500 hover:text-red-700 p-1"
+                                            }, React.createElement(Trash2, { size: 16 }))
+                                        )
+                                    )
+                                )
+                            )
+                        ),
+
+                    // Week Actions
+                    getCurrentWeekEntries()[currentSection].length > 0 && 
+                        React.createElement('div', { className: "mt-6 pt-4 border-t" },
+                            React.createElement('button', {
+                                onClick: clearCurrentWeek,
+                                className: "w-full bg-red-500 text-white py-2 rounded-lg font-medium flex items-center justify-center gap-2"
+                            },
+                                React.createElement(RefreshCw, { size: 18 }),
+                                "Clear This Week"
+                            )
+                        )
+                )
+            );
+        };
+
+        ReactDOM.render(React.createElement(NewsletterBuilder), document.getElementById('app'));
+    </script>
+</body>
+</html>
